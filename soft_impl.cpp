@@ -3,10 +3,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <vector>
 #include "defines.h"
-
+#include "maps.h"
 unsigned int cluster_map [ROWS][COLS];
 unsigned char ampl_map [ROWS][COLS];
+#include "packer.h"
 
 #define DECLARE_PRINT_MAP(name, type) \
 void print_ ## name ## _map (const type map[ROWS][COLS])\
@@ -23,7 +25,22 @@ void print_ ## name ## _map (const type map[ROWS][COLS])\
 DECLARE_PRINT_MAP (int, unsigned int);
 DECLARE_PRINT_MAP (char, unsigned char);
 
-unsigned int clu_table [ROWS*COLS];
+struct hit
+{
+  uint32_t row : 10;
+  uint32_t col : 6;
+  uint32_t dhpt : 2;
+  uint32_t ampl : 8;
+};
+
+struct cluster
+{
+  unsigned int id;
+  std::vector <struct hit> hits;
+} clu_table [ROWS*COLS];
+
+uint16_t frame [ROWS*COLS+ROWS/2];
+unsigned int frame_size=0;
 
 void fill_neighbors (int i, int j, unsigned int fill)
 {
@@ -34,14 +51,14 @@ void fill_neighbors (int i, int j, unsigned int fill)
     if (ampl_map[i][j+1] != 0)
     {
       if (cluster_map[i][j+1] != 0)
-        clu_table[fill]=cluster_map[i][j+1];
+        clu_table[fill].id=cluster_map[i][j+1];
       cluster_map [i][j+1] = fill;
     }
     if (i < ROWS -1)
       if (ampl_map[i+1][j+1] != 0)
       {
         if (cluster_map[i+1][j+1] != 0)
-          clu_table[fill] = cluster_map [i+1][j+1];
+          clu_table[fill].id = cluster_map [i+1][j+1];
         cluster_map [i+1][j+1] = fill;
       }
   }
@@ -49,7 +66,7 @@ void fill_neighbors (int i, int j, unsigned int fill)
     if (ampl_map[i+1][j] != 0)
     {
       if (cluster_map[i+1][j] !=0)
-        clu_table[fill]=cluster_map[i+1][j];
+        clu_table[fill].id=cluster_map[i+1][j];
       cluster_map [i+1][j] = fill;
     }
 }
@@ -58,7 +75,7 @@ void pre_process ()
 {
   int i, j;
   unsigned int cluster_counter=1;
-  clu_table[0]=0;
+  clu_table[0].id=0;
   for (i=0; i<ROWS; i++)
     for (j=0; j<COLS; j++)
       if (ampl_map[i][j] != 0)
@@ -70,10 +87,10 @@ void pre_process ()
         else
         {
           cluster_map[i][j] = cluster_counter;
-          clu_table [cluster_counter] = cluster_counter;
-          clu_table[0]++;
+          clu_table [cluster_counter].id = cluster_counter;
+          clu_table[0].id++;
           fill_neighbors (i,j, cluster_counter);
-          clu_table[cluster_counter] = cluster_counter;
+          clu_table[cluster_counter].id = cluster_counter;
           cluster_counter++;
         }
       }
@@ -81,14 +98,14 @@ void pre_process ()
 
 void process ()
 {
-  for (int i=1; i<clu_table[0]+1; i++)
+  for (int i=1; i<clu_table[0].id+1; i++)
   {
-    clu_table[i] = clu_table[clu_table[i]];
+    clu_table[i].id = clu_table[clu_table[i].id].id;
   }
   for (int i=0; i<ROWS; i++)
     for (int j=0; j<COLS; j++)
       if (cluster_map [i][j] != 0)
-        cluster_map[i][j] = clu_table[cluster_map[i][j]];
+        cluster_map[i][j] = clu_table[cluster_map[i][j]].id;
 }
 
 ssize_t fill_ampl_map (int fd)
@@ -111,14 +128,14 @@ int main (int argc, char**argv)
   printf ("Preprocessing:\n");
   print_int_map (cluster_map);
   printf ("Table after preprocessing:\n");
-  for (int i=0; i<clu_table[0]+1;i++)
-    printf ("table[%d] = %d\n", i, clu_table[i]);
+  for (int i=0; i<clu_table[0].id+1;i++)
+    printf ("table[%d] = %d\n", i, clu_table[i].id);
   process ();
   printf ("Output:\n");
   print_int_map (cluster_map);
   printf ("Table after postprocessing:\n");
-  for (int i=0; i<clu_table[0]+1;i++)
-    printf ("table[%d] = %d\n", i, clu_table[i]);
+  for (int i=0; i<clu_table[0].id+1;i++)
+    printf ("table[%d] = %d\n", i, clu_table[i].id);
   return 0;
 }
 
