@@ -1,3 +1,3 @@
 #pragma once
-#define COLS 80
-#define ROWS 40
+#define COLS 10
+#define ROWS 10
